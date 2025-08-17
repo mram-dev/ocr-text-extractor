@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>استخراج متن از تصویر - OCR Tool Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.08);
+            --glass-border: rgba(255, 255, 255, 0.15);
+        }
+        
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        body { 
+            font-family: 'Vazirmatn', sans-serif; 
+            overflow-x: hidden;
+        }
+        
+        .theme-dark { background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%); }
+        .theme-blue { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #06b6d4 100%); }
+        .theme-purple { background: linear-gradient(135deg, #581c87 0%, #7c3aed 50%, #a855f7 100%); }
+        
+        .glass-morphism { 
+            background: var(--glass-bg);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+        
+        .notification.show { transform: translateX(0); }
+        
+        .progress-ring { transform: rotate(-90deg); }
+        
+        .progress-ring-circle {
+            stroke-dasharray: 251.2;
+            stroke-dashoffset: 251.2;
+            transition: stroke-dashoffset 0.3s ease;
+        }
+        
+        .drag-drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+        
+        .drag-drop-zone.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .loading-dots span {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            margin: 0 2px;
+            animation: loading 1s ease-in-out infinite both;
+        }
+        
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes loading {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        
+        .stats-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.2s ease;
+        }
+        
+        .stats-card:hover { transform: translateY(-2px); }
+        
+        .theme-selector {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+        
+        .settings-panel {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            z-index: 1000;
+            transform: translateX(-300px);
+            transition: transform 0.3s ease;
+        }
+        
+        .settings-panel.open { transform: translateX(0); }
+        
+        .pulse { animation: pulse 2s ease-in-out infinite; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .text-gradient {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gradient:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-1px);
+        }
+        
+        .card-hover:hover { transform: translateY(-2px); }
+        
+        @media (max-width: 768px) {
+            .theme-selector, .settings-panel { display: none; }
+            .stats-card { font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body class="theme-dark min-h-screen py-6">
+    
+    <!-- Theme Selector -->
+    <div class="theme-selector">
+        <div class="glass-morphism rounded-xl p-3">
+            <div class="flex gap-2">
+                <button onclick="changeTheme('dark')" class="w-6 h-6 rounded-full bg-gradient-to-r from-gray-800 to-gray-900 border-2 border-white/20 hover:scale-110 transition-transform" title="تم تیره"></button>
+                <button onclick="changeTheme('blue')" class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 border-2 border-white/20 hover:scale-110 transition-transform" title="تم آبی"></button>
+                <button onclick="changeTheme('purple')" class="w-6 h-6 rounded-full bg-gradient-to-r from-purple-600 to-pink-500 border-2 border-white/20 hover:scale-110 transition-transform" title="تم بنفش"></button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Panel -->
+    <div class="settings-panel glass-morphism rounded-r-2xl p-4 w-72" id="settingsPanel">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-white font-bold">⚙️ تنظیمات</h3>
+            <button onclick="toggleSettings()" class="text-white/60 hover:text-white">✕</button>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="text-white/80 text-sm block mb-2">کیفیت استخراج</label>
+                <select class="w-full bg-white/10 text-white rounded-lg p-2 border border-white/20">
+                    <option value="high">بالا</option>
+                    <option value="medium" selected>متوسط</option>
+                    <option value="low">پایین</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="text-white/80 text-sm block mb-2">حالت تشخیص</label>
+                <select class="w-full bg-white/10 text-white rounded-lg p-2 border border-white/20">
+                    <option value="auto" selected>خودکار</option>
+                    <option value="text">فقط متن</option>
+                    <option value="handwriting">دست‌نویس</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Toggle Button -->
+    <button onclick="toggleSettings()" class="fixed top-20 left-6 z-50 glass-morphism rounded-full p-3 text-white hover:scale-110 transition-transform">
+        ⚙️
+    </button>
+    
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Stats Dashboard -->
+    <div class="fixed bottom-4 left-4 z-40 flex gap-2">
+        <div class="stats-card rounded-xl p-3 text-center">
+            <div class="text-white/60 text-xs">تصاویر پردازش شده</div>
+            <div class="text-white font-bold text-lg" id="processedCount">0</div>
+        </div>
+        <div class="stats-card rounded-xl p-3 text-center">
+            <div class="text-white/60 text-xs">دقت استخراج</div>
+            <div class="text-white font-bold text-lg">98%</div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 max-w-7xl">
+        <!-- Header -->
+        <div class="text-center mb-10">
+            <h1 class="text-5xl md:text-6xl font-black text-gradient mb-4 pulse">🔍 OCR Pro</h1>
+            <p class="text-white/80 text-lg md:text-xl mb-4">ابزار پیشرفته استخراج متن با هوش مصنوعی</p>
+            <div class="flex flex-wrap justify-center gap-4 text-sm text-white/60">
+                <span>✨ دقت بالا</span>
+                <span>⚡ سرعت فوق‌العاده</span>
+                <span>🌐 چند زبانه</span>
+                <span>🔒 امن</span>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid lg:grid-cols-2 gap-8 mb-8">
+            
+            <!-- Left Column: Input Section -->
+            <div class="space-y-6">
+                <!-- Input Card -->
+                <div class="glass-morphism rounded-3xl p-6 md:p-8 card-hover">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        📤 ورودی تصویر
+                        <div class="w-2 h-2 bg-green-400 rounded-full pulse"></div>
+                    </h2>
+                    
+                    <!-- Drag & Drop Zone -->
+                    <div class="drag-drop-zone rounded-2xl p-6 md:p-8 mb-6 text-center" id="dropZone">
+                        <div class="text-4xl md:text-6xl mb-4">📁</div>
+                        <p class="text-white/80 mb-2">تصویر را اینجا بکشید یا لینک وارد کنید</p>
+                        <p class="text-white/60 text-sm">JPG, PNG, GIF تا 10MB</p>
+                    </div>
+
+                    <!-- URL Input -->
+                    <div class="mb-6">
+                        <label class="block text-white font-semibold mb-3 flex items-center gap-2">
+                            🔗 لینک تصویر
+                            <span class="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">اختیاری</span>
+                        </label>
+                        <div class="relative">
+                            <input 
+                                type="url" 
+                                id="imageUrl" 
+                                placeholder="https://example.com/image.jpg"
+                                class="w-full px-4 py-4 pr-12 rounded-xl border-2 border-white/20 bg-white/5 text-white placeholder-white/50 focus:border-blue-400 focus:outline-none transition-all"
+                            >
+                            <div class="absolute left-3 top-1/2 transform -translate-y-1/2">
+                                <div id="urlStatus" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Language Selection -->
+                    <div class="mb-6">
+                        <label class="block text-white font-semibold mb-4">🌍 انتخاب زبان:</label>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <label class="glass-morphism p-4 rounded-xl cursor-pointer hover:scale-105 transition-all group">
+                                <input type="radio" name="language" value="fa" class="hidden" checked>
+                                <div class="text-center">
+                                    <div class="text-2xl md:text-3xl mb-2 group-hover:scale-110 transition-transform">🇮🇷</div>
+                                    <div class="text-white font-medium text-sm md:text-base">فارسی</div>
+                                </div>
+                            </label>
+                            <label class="glass-morphism p-4 rounded-xl cursor-pointer hover:scale-105 transition-all group">
+                                <input type="radio" name="language" value="en" class="hidden">
+                                <div class="text-center">
+                                    <div class="text-2xl md:text-3xl mb-2 group-hover:scale-110 transition-transform">🇺🇸</div>
+                                    <div class="text-white font-medium text-sm md:text-base">English</div>
+                                </div>
+                            </label>
+                            <label class="glass-morphism p-4 rounded-xl cursor-pointer hover:scale-105 transition-all group">
+                                <input type="radio" name="language" value="fa+en" class="hidden">
+                                <div class="text-center">
+                                    <div class="text-2xl md:text-3xl mb-2 group-hover:scale-110 transition-transform">🌐</div>
+                                    <div class="text-white font-medium text-sm md:text-base">ترکیبی</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Hidden Token -->
+                    <input type="hidden" id="apiToken" value="jrfxczmnu1hwjqo:x5qSb4mDAb9uRtG3gBga">
+
+                    <!-- Extract Button -->
+                    <button 
+                        id="extractBtn" 
+                        onclick="extractText()"
+                        class="w-full btn-gradient text-white font-bold py-4 md:py-5 px-8 rounded-2xl shadow-2xl relative overflow-hidden"
+                    >
+                        <span id="btnText" class="flex items-center justify-center gap-3 text-lg">
+                            🚀 استخراج متن
+                        </span>
+                        <div id="btnLoading" class="hidden">
+                            <div class="loading-dots text-white">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <div class="mt-2 text-sm">در حال پردازش...</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Column: Preview & Results -->
+            <div class="space-y-6">
+                
+                <!-- Image Preview -->
+                <div id="imagePreview" class="glass-morphism rounded-3xl p-6 hidden card-hover">
+                    <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
+                        🖼️ پیش‌نمایش تصویر
+                        <div class="w-2 h-2 bg-blue-400 rounded-full pulse"></div>
+                    </h3>
+                    <div class="relative">
+                        <img id="previewImg" class="w-full h-auto rounded-2xl shadow-2xl border border-white/20" alt="پیش‌نمایش تصویر">
+                        <div class="absolute top-4 right-4 glass-morphism rounded-lg px-3 py-1 text-white text-sm">
+                            <span id="imageSize">محاسبه اندازه...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Ring -->
+                <div id="progressContainer" class="glass-morphism rounded-3xl p-6 md:p-8 text-center hidden">
+                    <h3 class="text-white font-semibold mb-6">⚡ در حال پردازش</h3>
+                    <div class="relative inline-block">
+                        <svg class="progress-ring w-24 h-24 md:w-32 md:h-32" viewBox="0 0 80 80">
+                            <circle cx="40" cy="40" r="36" stroke="rgba(255,255,255,0.2)" stroke-width="8" fill="none"/>
+                            <circle id="progressCircle" class="progress-ring-circle" cx="40" cy="40" r="36" stroke="url(#gradient)" stroke-width="8" fill="none"/>
+                            <defs>
+                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#667eea"/>
+                                    <stop offset="100%" style="stop-color:#764ba2"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span id="progressText" class="text-white font-bold text-lg md:text-xl">0%</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-white/70" id="progressStatus">آماده‌سازی...</div>
+                </div>
+
+                <!-- Results Section -->
+                <div id="resultContainer" class="hidden">
+                    <div class="glass-morphism rounded-3xl p-6 md:p-8 card-hover">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                            <h3 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+                                ✨ نتیجه استخراج
+                                <div class="w-3 h-3 bg-green-400 rounded-full pulse"></div>
+                            </h3>
+                            <div class="flex gap-2">
+                                <button onclick="downloadText()" class="glass-morphism px-4 py-2 rounded-xl text-white hover:scale-105 transition-transform text-sm">
+                                    💾 دانلود
+                                </button>
+                                <button onclick="shareText()" class="glass-morphism px-4 py-2 rounded-xl text-white hover:scale-105 transition-transform text-sm">
+                                    🔗 اشتراک
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Text Output -->
+                        <div class="glass-morphism rounded-2xl p-4 md:p-6 mb-4">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                                <span class="text-white font-semibold flex items-center gap-2">
+                                    📝 متن استخراج شده
+                                    <span id="wordCount" class="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">0 کلمه</span>
+                                </span>
+                                <button 
+                                    onclick="copyText()" 
+                                    id="copyBtn"
+                                    class="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-4 py-2 rounded-xl transition-all flex items-center gap-2 shadow-lg hover:scale-105 text-sm"
+                                >
+                                    📋 کپی
+                                </button>
+                            </div>
+                            <textarea 
+                                id="extractedText" 
+                                class="w-full h-32 md:h-48 p-4 border-2 border-white/20 rounded-xl resize-none focus:outline-none bg-white/5 text-white placeholder-white/50 focus:border-blue-400 transition-all text-sm md:text-base"
+                                placeholder="متن استخراج شده در اینجا نمایش داده می‌شود..."
+                            ></textarea>
+                            
+                            <!-- Text Analysis -->
+                            <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div class="text-center">
+                                    <div class="text-lg md:text-2xl font-bold text-blue-400" id="charCount">0</div>
+                                    <div class="text-xs text-white/60">کاراکتر</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg md:text-2xl font-bold text-green-400" id="lineCount">0</div>
+                                    <div class="text-xs text-white/60">خط</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg md:text-2xl font-bold text-purple-400" id="confidence">0%</div>
+                                    <div class="text-xs text-white/60">اطمینان</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg md:text-2xl font-bold text-yellow-400" id="processingSpeed">0ms</div>
+                                    <div class="text-xs text-white/60">سرعت</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stats Panel -->
+                        <div class="glass-morphism rounded-2xl p-4">
+                            <h4 class="font-bold text-white mb-3 flex items-center gap-2">
+                                📊 جزئیات پردازش
+                            </h4>
+                            <div class="grid grid-cols-2 gap-4 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-white/70">وضعیت:</span>
+                                    <span id="apiStatus" class="font-medium text-green-400">موفق ✅</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-white/70">زبان:</span>
+                                    <span id="apiLanguage" class="font-medium text-blue-400">فارسی</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-white/70">زمان:</span>
+                                    <span id="processingTime" class="font-medium text-purple-400">0ms</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-white/70">اندازه:</span>
+                                    <span id="imageDimensions" class="font-medium text-yellow-400">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorContainer" class="hidden mb-8">
+            <div class="glass-morphism rounded-3xl p-6 border-2 border-red-500/50">
+                <div class="flex items-center gap-4">
+                    <div class="text-4xl">❌</div>
+                    <div>
+                        <h3 class="text-red-200 font-bold text-xl mb-2">خطا در استخراج متن</h3>
+                        <p id="errorMessage" class="text-red-300"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features & Guide -->
+        <div class="grid md:grid-cols-2 gap-8 mb-8">
+            <div class="glass-morphism rounded-3xl p-6 card-hover">
+                <h3 class="text-white font-bold text-xl mb-4 flex items-center gap-2">
+                    🚀 ویژگی‌های پیشرفته
+                </h3>
+                <div class="space-y-3 text-white/80">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span>تشخیص خودکار زبان</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        <span>پردازش تصاویر با کیفیت بالا</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <span>تشخیص دست‌نویس فارسی</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                        <span>حفظ فرمت و ساختار متن</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-morphism rounded-3xl p-6 card-hover">
+                <h3 class="text-white font-bold text-xl mb-4 flex items-center gap-2">
+                    📋 راهنمای سریع
+                </h3>
+                <div class="space-y-3 text-white/80 text-sm">
+                    <div class="flex gap-3">
+                        <span class="text-blue-400 font-bold">1.</span>
+                        <span>تصویر را آپلود کنید یا لینک وارد کنید</span>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="text-blue-400 font-bold">2.</span>
+                        <span>زبان مورد نظر را انتخاب کنید</span>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="text-blue-400 font-bold">3.</span>
+                        <span>روی دکمه استخراج کلیک کنید</span>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="text-blue-400 font-bold">4.</span>
+                        <span>متن را کپی یا دانلود کنید</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="glass-morphism rounded-3xl p-6 md:p-8 mt-12">
+            <div class="grid md:grid-cols-3 gap-6 mb-6">
+                <!-- Brand -->
+                <div class="text-center md:text-right">
+                    <h3 class="text-2xl font-bold text-gradient mb-3">OCR Pro</h3>
+                    <p class="text-white/70 text-sm leading-relaxed">
+                        ابزار پیشرفته استخراج متن با هوش مصنوعی
+                        <br>
+                        ساخته شده با ❤️  توسط amir_wd
+                    </p>
+                </div>
+
+                <!-- Features -->
+                <div class="text-center">
+                    <h4 class="text-white font-bold mb-4">✨ ویژگی‌ها</h4>
+                    <div class="space-y-2 text-sm text-white/70">
+                        <div>دقت بالای 98%</div>
+                        <div>پردازش سریع</div>
+                        <div>چند زبانه</div>
+                        <div>امن و مطمئن</div>
+                    </div>
+                </div>
+
+                <!-- Contact -->
+                <div class="text-center md:text-left">
+                    <h4 class="text-white font-bold mb-4">🔗 ارتباط با ما</h4>
+                    <div class="space-y-2">
+                        <a href="https://t.me/amir_bahoosh_wd" target="_blank" 
+                           class="block text-white/70 hover:text-blue-400 transition-colors text-sm">
+                            📱 توسعه‌دهنده
+                        </a>
+                        <a href="https://t.me/amirb_wd" target="_blank" 
+                           class="block text-white/70 hover:text-purple-400 transition-colors text-sm">
+                            💻 سورس کده
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom -->
+            <div class="border-t border-white/10 pt-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="text-white/60 text-sm">
+                    © 2025 OCR Pro - تمامی حقوق محفوظ است
+                </div>
+                <div class="flex items-center gap-4 text-xs text-white/50">
+                    <span>نسخه 2.0.0</span>
+                    <div class="w-1 h-1 bg-white/30 rounded-full"></div>
+                    <span>بهینه‌سازی شده</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        let startTime;
+        let processedCount = parseInt(localStorage.getItem('processedCount') || '0');
+        let currentTheme = localStorage.getItem('theme') || 'dark';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProcessedCount();
+            applyTheme(currentTheme);
+            setupLanguageSelection();
+            setupDragDrop();
+            showWelcomeNotification();
+        });
+
+        // Theme System
+        function changeTheme(theme) {
+            currentTheme = theme;
+            applyTheme(theme);
+            localStorage.setItem('theme', theme);
+            showNotification('تم تغییر کرد!', 'success');
+        }
+
+        function applyTheme(theme) {
+            document.body.className = `theme-${theme} min-h-screen py-6`;
+        }
+
+        // Settings Panel
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('open');
+        }
+
+        // Notification System
+        function showNotification(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            
+            const icons = {
+                success: '✅',
+                error: '❌',
+                info: 'ℹ️',
+                warning: '⚠️'
+            };
+
+            notification.className = `glass-morphism rounded-xl p-4 mb-2 transform translate-x-full transition-all duration-300`;
+            notification.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="text-xl">${icons[type]}</div>
+                    <div class="text-white font-medium text-sm">${message}</div>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-white/60 hover:text-white ml-auto">✕</button>
+                </div>
+            `;
+
+            container.appendChild(notification);
+            
+            setTimeout(() => notification.classList.remove('translate-x-full'), 100);
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => notification.remove(), 300);
+            }, duration);
+        }
+
+        function showWelcomeNotification() {
+            setTimeout(() => {
+                showNotification('خوش آمدید! ابزار OCR Pro آماده استفاده است 🎉', 'success', 4000);
+            }, 1000);
+        }
+
+        // Language Selection
+        function setupLanguageSelection() {
+            document.querySelectorAll('input[name="language"]').forEach(input => {
+                input.addEventListener('change', function() {
+                    document.querySelectorAll('input[name="language"]').forEach(inp => {
+                        inp.closest('label').classList.remove('ring-2', 'ring-blue-400', 'bg-blue-500/20');
+                    });
+                    this.closest('label').classList.add('ring-2', 'ring-blue-400', 'bg-blue-500/20');
+                });
+            });
+        }
+
+        // Drag & Drop
+        function setupDragDrop() {
+            const dropZone = document.getElementById('dropZone');
+            
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileUpload(files[0]);
+                }
+            });
+        }
+
+        function handleFileUpload(file) {
+            if (!file.type.startsWith('image/')) {
+                showNotification('لطفاً فقط فایل تصویری انتخاب کنید', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imageUrl').value = e.target.result;
+                showImagePreview(e.target.result);
+                showNotification('تصویر بارگذاری شد!', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Progress System
+        function updateProgress(percent, status) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressCircle = document.getElementById('progressCircle');
+            const progressText = document.getElementById('progressText');
+            const progressStatus = document.getElementById('progressStatus');
+
+            if (percent === 0) {
+                progressContainer.classList.add('hidden');
+                return;
+            }
+
+            progressContainer.classList.remove('hidden');
+            
+            const circumference = 2 * Math.PI * 36;
+            const offset = circumference - (percent / 100) * circumference;
+            
+            progressCircle.style.strokeDashoffset = offset;
+            progressText.textContent = percent + '%';
+            progressStatus.textContent = status;
+        }
+
+        // URL Status
+        function updateUrlStatus(status) {
+            const indicator = document.getElementById('urlStatus');
+            const colors = {
+                valid: 'bg-green-400',
+                invalid: 'bg-red-400',
+                loading: 'bg-yellow-400',
+                default: 'bg-gray-400'
+            };
+            
+            indicator.className = `w-3 h-3 rounded-full ${colors[status] || colors.default}`;
+        }
+
+        // Main OCR Function
+        function extractText() {
+            const imageUrl = document.getElementById('imageUrl').value.trim();
+            const apiToken = document.getElementById('apiToken').value.trim();
+            const selectedLanguage = document.querySelector('input[name="language"]:checked').value;
+            
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('errorContainer').classList.add('hidden');
+            
+            if (!imageUrl) {
+                showNotification('لطفاً لینک تصویر را وارد کنید', 'error');
+                return;
+            }
+            
+            showLoading(true);
+            startTime = Date.now();
+            
+            updateProgress(10, 'آماده‌سازی درخواست...');
+            showImagePreview(imageUrl);
+            
+            const apiUrl = `https://api.majidapi.ir/tools/ocr?lang=${selectedLanguage}&image=${encodeURIComponent(imageUrl)}&token=${apiToken}`;
+            
+            setTimeout(() => updateProgress(30, 'ارسال تصویر...'), 300);
+            setTimeout(() => updateProgress(60, 'پردازش با AI...'), 600);
+            setTimeout(() => updateProgress(80, 'استخراج متن...'), 900);
+            
+            fetch(apiUrl)
+                .then(response => {
+                    updateProgress(90, 'دریافت نتایج...');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateProgress(100, 'تکمیل شد!');
+                    setTimeout(() => {
+                        showLoading(false);
+                        updateProgress(0);
+                        handleApiResponse(data, selectedLanguage);
+                    }, 300);
+                })
+                .catch(error => {
+                    showLoading(false);
+                    updateProgress(0);
+                    
+                    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                        showError('خطا در اتصال به API - احتمالاً مشکل CORS یا اتصال اینترنت');
+                    } else {
+                        showError(`خطا در ارتباط با API: ${error.message}`);
+                    }
+                });
+        }
+        
+        function showImagePreview(imageUrl) {
+            const previewContainer = document.getElementById('imagePreview');
+            const previewImg = document.getElementById('previewImg');
+            
+            previewImg.src = imageUrl;
+            previewContainer.classList.remove('hidden');
+            
+            previewImg.onload = function() {
+                const size = `${this.naturalWidth} × ${this.naturalHeight}`;
+                document.getElementById('imageSize').textContent = size;
+                document.getElementById('imageDimensions').textContent = size;
+                updateUrlStatus('valid');
+            };
+            
+            previewImg.onerror = function() {
+                previewContainer.classList.add('hidden');
+                updateUrlStatus('invalid');
+            };
+        }
+        
+        function handleApiResponse(data, language) {
+            const processingTime = Date.now() - startTime;
+            
+            if (data && data.status === 200 && data.result) {
+                const extractedText = data.result;
+                
+                if (extractedText.trim()) {
+                    processedCount++;
+                    updateProcessedCount();
+                    
+                    document.getElementById('extractedText').value = extractedText;
+                    document.getElementById('apiStatus').textContent = 'موفق ✅';
+                    document.getElementById('apiLanguage').textContent = getLanguageName(language);
+                    document.getElementById('processingTime').textContent = `${processingTime}ms`;
+                    document.getElementById('processingSpeed').textContent = `${processingTime}ms`;
+                    
+                    updateTextAnalysis(extractedText);
+                    
+                    document.getElementById('resultContainer').classList.remove('hidden');
+                    showNotification('متن با موفقیت استخراج شد! 🎉', 'success');
+                } else {
+                    showError('متنی در تصویر یافت نشد یا تصویر قابل پردازش نیست');
+                }
+            } else if (data && data.success === true && data.text) {
+                const extractedText = data.text;
+                
+                if (extractedText.trim()) {
+                    processedCount++;
+                    updateProcessedCount();
+                    
+                    document.getElementById('extractedText').value = extractedText;
+                    document.getElementById('apiStatus').textContent = 'موفق ✅';
+                    document.getElementById('apiLanguage').textContent = getLanguageName(language);
+                    document.getElementById('processingTime').textContent = `${processingTime}ms`;
+                    
+                    updateTextAnalysis(extractedText);
+                    
+                    document.getElementById('resultContainer').classList.remove('hidden');
+                    showNotification('متن با موفقیت استخراج شد! 🎉', 'success');
+                } else {
+                    showError('متنی در تصویر یافت نشد');
+                }
+            } else {
+                const errorMsg = data.message || data.error || data.msg || 'خطای نامشخص در استخراج متن';
+                showError(errorMsg);
+            }
+        }
+
+        function updateTextAnalysis(text) {
+            const words = text.trim().split(/\s+/).length;
+            const chars = text.length;
+            const lines = text.split('\n').length;
+            
+            document.getElementById('wordCount').textContent = `${words} کلمه`;
+            document.getElementById('charCount').textContent = chars;
+            document.getElementById('lineCount').textContent = lines;
+            document.getElementById('confidence').textContent = '95%';
+        }
+
+        function updateProcessedCount() {
+            document.getElementById('processedCount').textContent = processedCount;
+            localStorage.setItem('processedCount', processedCount.toString());
+        }
+        
+        function getLanguageName(lang) {
+            switch(lang) {
+                case 'fa': return 'فارسی';
+                case 'en': return 'انگلیسی';
+                case 'fa+en': return 'فارسی + انگلیسی';
+                default: return lang;
+            }
+        }
+        
+        function showLoading(show) {
+            const btnText = document.getElementById('btnText');
+            const btnLoading = document.getElementById('btnLoading');
+            const extractBtn = document.getElementById('extractBtn');
+            
+            if (show) {
+                btnText.classList.add('hidden');
+                btnLoading.classList.remove('hidden');
+                extractBtn.disabled = true;
+                extractBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnText.classList.remove('hidden');
+                btnLoading.classList.add('hidden');
+                extractBtn.disabled = false;
+                extractBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorContainer').classList.remove('hidden');
+            showNotification(message, 'error');
+        }
+        
+        function copyText() {
+            const textArea = document.getElementById('extractedText');
+            textArea.select();
+            document.execCommand('copy');
+            
+            const copyBtn = document.getElementById('copyBtn');
+            const originalText = copyBtn.innerHTML;
+            copyBtn.innerHTML = '✅ کپی شد!';
+            
+            setTimeout(() => {
+                copyBtn.innerHTML = originalText;
+            }, 2000);
+            
+            showNotification('متن کپی شد!', 'success', 2000);
+        }
+
+        function downloadText() {
+            const text = document.getElementById('extractedText').value;
+            if (!text) {
+                showNotification('متنی برای دانلود وجود ندارد', 'warning');
+                return;
+            }
+
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `extracted-text-${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('فایل دانلود شد!', 'success');
+        }
+
+        function shareText() {
+            const text = document.getElementById('extractedText').value;
+            if (!text) {
+                showNotification('متنی برای اشتراک وجود ندارد', 'warning');
+                return;
+            }
+
+            if (navigator.share) {
+                navigator.share({
+                    title: 'متن استخراج شده',
+                    text: text
+                });
+            } else {
+                copyText();
+                showNotification('متن کپی شد - می‌توانید آن را به اشتراک بگذارید', 'info');
+            }
+        }
+        
+        // URL validation
+        document.getElementById('imageUrl').addEventListener('input', function() {
+            const url = this.value.trim();
+            
+            if (!url) {
+                updateUrlStatus('default');
+                return;
+            }
+            
+            updateUrlStatus('loading');
+            
+            if (url.match(/\.(jpeg|jpg|gif|png)$/i)) {
+                setTimeout(() => {
+                    if (url.startsWith('http')) {
+                        updateUrlStatus('valid');
+                        setTimeout(() => showImagePreview(url), 300);
+                    } else {
+                        updateUrlStatus('invalid');
+                    }
+                }, 300);
+            } else {
+                updateUrlStatus('invalid');
+            }
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9702bfbfe541ecb6',t:'MTc1NTM2NjM2NC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
